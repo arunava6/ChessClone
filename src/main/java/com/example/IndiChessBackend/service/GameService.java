@@ -171,11 +171,27 @@ public class GameService {
                 "] To: [" + moveRequest.getToRow() + "," + moveRequest.getToCol() + "]");
         System.out.println("♟️ Piece: " + moveRequest.getPiece());
 
-        // Get game state
+        // Get game state - auto-initialize if not present
         GameState gameState = activeGames.get(matchId);
         if (gameState == null) {
-            System.out.println("❌ Game not found in active games: " + matchId);
-            throw new RuntimeException("Game not found or not active");
+            System.out.println("⚠️ Game not in activeGames, trying to initialize from database: " + matchId);
+            // Try to initialize from database
+            Optional<Match> matchOpt = matchRepo.findById(matchId);
+            if (matchOpt.isPresent()) {
+                gameState = initializeGameState(matchOpt.get());
+                activeGames.put(matchId, gameState);
+
+                // Also store player usernames
+                List<String> players = new ArrayList<>();
+                players.add(matchOpt.get().getPlayer1().getUsername());
+                players.add(matchOpt.get().getPlayer2().getUsername());
+                gamePlayers.put(matchId, players);
+
+                System.out.println("✅ Game state initialized from database for match: " + matchId);
+            } else {
+                System.out.println("❌ Match not found in database: " + matchId);
+                throw new RuntimeException("Game not found or not active");
+            }
         }
 
         // Verify it's this player's turn
@@ -384,8 +400,17 @@ public class GameService {
             // Initialize game if not already active
             Optional<Match> matchOpt = matchRepo.findById(matchId);
             if (matchOpt.isPresent()) {
-                gameState = initializeGameState(matchOpt.get());
+                Match match = matchOpt.get();
+                gameState = initializeGameState(match);
                 activeGames.put(matchId, gameState);
+
+                // Also store player usernames
+                List<String> players = new ArrayList<>();
+                players.add(match.getPlayer1().getUsername());
+                players.add(match.getPlayer2().getUsername());
+                gamePlayers.put(matchId, players);
+
+                System.out.println("✅ Game state initialized for player join, match: " + matchId);
             } else {
                 throw new RuntimeException("Game not found");
             }
@@ -459,7 +484,6 @@ public class GameService {
         GameState gameState = activeGames.get(matchId);
         if (gameState != null) {
             gameState.setStatus("RESIGNED");
-            activeGames.put(matchId, gameState);
 
             // Determine winner (opponent of player who resigned)
             String resignedColor = getPlayerColor(matchId, username);
@@ -474,7 +498,12 @@ public class GameService {
 
             messagingTemplate.convertAndSend("/topic/game-state/" + matchId + "/resignation", (Object) resignationData);
 
+            // Clean up game state to allow new games
+            activeGames.remove(matchId);
+            gamePlayers.remove(matchId);
+
             System.out.println("🏳️ Player " + username + " (" + resignedColor + ") resigned. Winner: " + winner);
+            System.out.println("🧹 Cleaned up game state for match: " + matchId);
         }
     }
 
@@ -522,7 +551,6 @@ public class GameService {
         GameState gameState = activeGames.get(matchId);
         if (gameState != null) {
             gameState.setStatus("CHECKMATE");
-            activeGames.put(matchId, gameState);
 
             // Broadcast checkmate to both players
             Map<String, Object> checkmateData = new HashMap<>();
@@ -532,28 +560,38 @@ public class GameService {
 
             messagingTemplate.convertAndSend("/topic/game-state/" + matchId + "/checkmate", (Object) checkmateData);
 
+            // Clean up game state to allow new games
+            activeGames.remove(matchId);
+            gamePlayers.remove(matchId);
+
             System.out.println("👑 Checkmate! Winner: " + winner);
+            System.out.println("🧹 Cleaned up game state for match: " + matchId);
         }
     }
 
-    public void handleTimeout(Long matchId) {
+    public void handleTimeout(Long matchId, String loser) {
         GameState gameState = activeGames.get(matchId);
         if (gameState != null) {
             gameState.setStatus("TIMEOUT");
-            activeGames.put(matchId, gameState);
+
+            // Determine winner based on loser
+            String winner = "white".equals(loser) ? "black" : "white";
 
             // Broadcast timeout to both players
             Map<String, Object> timeoutData = new HashMap<>();
             timeoutData.put("type", "TIMEOUT");
-            timeoutData.put("result", "draw");
+            timeoutData.put("loser", loser);
+            timeoutData.put("winner", winner);
             timeoutData.put("matchId", matchId);
 
             messagingTemplate.convertAndSend("/topic/game-state/" + matchId + "/timeout", (Object) timeoutData);
 
-            // Clean up game state
+            // Clean up game state to allow new games
             activeGames.remove(matchId);
+            gamePlayers.remove(matchId);
 
-            System.out.println("⏰ Time expired in match " + matchId + " - Draw!");
+            System.out.println("⏰ Time expired in match " + matchId + " - " + winner + " wins!");
+            System.out.println("🧹 Cleaned up game state for match: " + matchId);
         }
     }
 

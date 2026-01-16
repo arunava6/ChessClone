@@ -102,6 +102,9 @@ public class MatchService {
             }
 
             // No opponent found, add to waiting queue
+            // First, remove user from queue if they're already there (cleanup from previous
+            // game)
+            waitingPlayers.remove(userName);
             waitingPlayers.put(userName, gameType);
             System.out.println("User " + userName + " added to waiting queue for " + gameType);
 

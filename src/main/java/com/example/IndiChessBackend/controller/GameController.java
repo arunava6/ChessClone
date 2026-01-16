@@ -160,10 +160,12 @@ public class GameController {
     // WebSocket endpoint for timeout
     @MessageMapping("/game/{matchId}/timeout")
     public void handleTimeout(@DestinationVariable Long matchId,
+            @Payload Map<String, Object> data,
             Principal principal) {
         try {
-            System.out.println("Timeout reported in game " + matchId);
-            gameService.handleTimeout(matchId);
+            String loser = data.get("loser") != null ? data.get("loser").toString() : null;
+            System.out.println("Timeout reported in game " + matchId + ", loser: " + loser);
+            gameService.handleTimeout(matchId, loser);
         } catch (Exception e) {
             System.err.println("Error handling timeout: " + e.getMessage());
         }
