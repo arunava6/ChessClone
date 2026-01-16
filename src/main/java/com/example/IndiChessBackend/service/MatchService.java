@@ -84,6 +84,8 @@ public class MatchService {
                         Match newMatch = new Match(player1, player2, IN_PROGRESS, 1);
                         if ("blitz".equalsIgnoreCase(gameType)) {
                             newMatch.setGameType(com.example.IndiChessBackend.model.GameType.BLITZ);
+                        } else if ("rapid".equalsIgnoreCase(gameType)) {
+                            newMatch.setGameType(com.example.IndiChessBackend.model.GameType.RAPID);
                         } else {
                             newMatch.setGameType(com.example.IndiChessBackend.model.GameType.STANDARD);
                         }
